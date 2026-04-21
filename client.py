@@ -1,6 +1,7 @@
 import socket
 import threading
 import sys
+import select
 
 # fixes cmd colors looking wrong
 import colorama
@@ -14,7 +15,7 @@ while True:
     print("[CLIENT] Username must be at least 1 character.")
 
 client_socket = None
-#connected = False
+connected = False
 running = True
 current_color = '\033[0m' # Default reset
 commands = {}
@@ -31,13 +32,10 @@ COLORS = {
     'reset': '\033[0m'
 }
 
-def connected():
-    return client_socket is not None and client_socket.fileno() != -1
-
 # Receive messages from server
 def receive():
-    #global connected
-    while connected():
+    global connected
+    while connected:
         try:
             message = client_socket.recv(1024).decode('utf-8')
             if not message:
@@ -48,9 +46,9 @@ def receive():
             else:
                 print(message)
         except:
-            if connected(): # Only print error if we didn't intentionally disconnect
+            if connected: # Only print error if we didn't intentionally disconnect
                 print("[ERROR] Connection lost.")
-                #connected = False
+                connected = False
             break
 
 # -------------- Command handler --------------
@@ -68,8 +66,8 @@ def cmd_quit(args):
     sys.exit(0)
 
 def cmd_connect(args):
-    global client_socket#, connected
-    if connected():
+    global client_socket, connected
+    if connected:
         print("[CLIENT] You are already connected!")
         return
     try:
@@ -79,19 +77,18 @@ def cmd_connect(args):
         PORT = int(input("Enter PORT or leave blank for 5555: ") or 5555)
 
         client_socket.connect((HOST, PORT))
-        #connected = True
+        connected = True
         threading.Thread(target=receive, daemon=True).start()
         print(f"[CLIENT] Connected to {HOST}:{PORT}")
     except Exception as e:
         print(f"[CLIENT] Connection failed: {e}")
 
 def cmd_disconnect(args):
-    #global connected, client_socket
-    global client_socket
-    if not connected():
+    global connected, client_socket
+    if not connected:
         print("[CLIENT] You are not currently connected.")
         return
-    #connected = False
+    connected = False
     try:
         client_socket.close()
     except:
@@ -105,13 +102,13 @@ def cmd_color(args):
         current_color = COLORS[color_name]
         print(f"{current_color}[CLIENT] Username color changed to {color_name}!{COLORS['reset']}")
     
-    if connected():
+    if connected:
         client_socket.send(f"/setcolor {color_name}".encode('utf-8'))
     else:
         print(f"[CLIENT] Available colors: {', '.join(COLORS.keys())}")
 
 def cmd_list(args):
-    if connected():
+    if connected:
         client_socket.send("/list".encode('utf-8'))
     else:
         print("[CLIENT] You must be connected to list users.")
@@ -121,7 +118,7 @@ def cmd_changename(args):
     if not args:
         print("[CLIENT] Usage: /changename <newname>")
         return
-    if connected():
+    if connected:
         client_socket.send(f"/changename {args}".encode('utf-8'))
     username = args # Update locally so newer messages use the new name
     print(f"[CLIENT] Local username set to {username}.")
@@ -160,7 +157,7 @@ def write():
                     print("[CLIENT] Unknown command. Type /help for a list of commands.")
             else:
                 # Normal chat message
-                if connected():
+                if connected:
                     full_message = f"{current_color}{username}{COLORS['reset']}: {message}"
                     client_socket.send(full_message.encode('utf-8'))
                 else:
