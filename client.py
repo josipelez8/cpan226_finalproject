@@ -123,7 +123,7 @@ def cmd_changename(args):
         return
     if connected():
         client_socket.send(f"/changename {args}".encode('utf-8'))
-    username = args # Update locally so subsequent messages use the new name
+    username = args # Update locally so newer messages use the new name
     print(f"[CLIENT] Local username set to {username}.")
 
 def cmd_help(args):

@@ -47,7 +47,7 @@ def remove_client(client):
         broadcast(f"[SERVER] {username} has left the chat.".encode('utf-8'))
         client.close()
 
-# Handle individual client (MODIFIED to intercept client commands)
+# Handle individual client
 def handle_client(client):
     while running:
         try:
