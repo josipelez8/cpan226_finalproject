@@ -1,6 +1,9 @@
 import socket
 import threading
-#import sys
+
+# fixes cmd colors looking wrong
+import colorama
+colorama.init()
 
 # ---- init + get ip and port ---- 
 HOST = input("Enter IP or leave blank for 127.0.0.1: ") or '127.0.0.1'
@@ -15,6 +18,14 @@ clients = []
 usernames = []
 commands = {}
 running = True
+user_colors = {}
+
+# ANSI Color Codes
+COLORS = {
+    'red': '\033[91m', 'green': '\033[92m', 'yellow': '\033[93m',
+    'blue': '\033[94m', 'magenta': '\033[95m', 'cyan': '\033[96m',
+    'white': '\033[97m', 'reset': '\033[0m'
+}
 
 print("[SERVER] Started!! Waiting for connections...")
 
@@ -36,13 +47,46 @@ def remove_client(client):
         broadcast(f"[SERVER] {username} has left the chat.".encode('utf-8'))
         client.close()
 
-# Handle individual client
+# Handle individual client (MODIFIED to intercept client commands)
 def handle_client(client):
     while running:
         try:
             message = client.recv(1024)
             if message:
-                broadcast(message)
+                decoded = message.decode('utf-8')
+                
+                # Check for Server-bound Client Commands
+                if decoded.startswith('/list'):
+                    user_list = "Connected users:\n" + "\n".join([f" - {u}" for u in usernames])
+                    client.send(f"[SERVER] {user_list}".encode('utf-8'))
+
+                elif decoded.startswith('/setcolor'):
+                    parts = decoded.split(" ", 1)
+                    if len(parts) > 1:
+                        color_name = parts[1].strip()
+                        if client in clients:
+                            idx = clients.index(client)
+                            username = usernames[idx]
+                            user_colors[username] = COLORS.get(color_name, COLORS['reset'])
+                    
+                elif decoded.startswith('/changename'):
+                    parts = decoded.split(" ", 1)
+                    if len(parts) > 1:
+                        new_name = parts[1].strip()
+                        if new_name in usernames:
+                            client.send("[SERVER] Username already taken.".encode('utf-8'))
+                        else:
+                            if client in clients:
+                                index = clients.index(client)
+                                old_name = usernames[index]
+                                usernames[index] = new_name
+                                broadcast(f"[SERVER] {old_name} changed their name to {new_name}".encode('utf-8'))
+                    else:
+                        client.send("[SERVER] Usage: /changename <newname>".encode('utf-8'))
+                        
+                else:
+                    # Normal broadcast
+                    broadcast(message)
             else:
                 remove_client(client)
                 break
@@ -57,11 +101,8 @@ def receive():
         try:
             client, address = server.accept()
         except socket.timeout:
-            # This simply means no one connected within 1 second
-            # Loop again and check if we're still running
             continue
         except OSError:
-            # happens when server socket is closed during shutdown
             break
 
         print(f"[SERVER] {str(address)} started connecting...")
@@ -77,11 +118,10 @@ def receive():
 
             usernames.append(username)
             clients.append(client)
+            user_colors[username] = COLORS['reset']
 
-            print(f"[USERNAME] {username}")
+            #print(f"[USERNAME] {username}")
             broadcast(f"[SERVER] {username} joined the chat!".encode('utf-8'))
-
-            #client.send("[CONNECTED] Welcome to TalkNet!".encode('utf-8'))
 
             thread = threading.Thread(target=handle_client, args=(client,), daemon=True)
             thread.start()
@@ -132,7 +172,6 @@ def command_listener():
             print("[SERVER] Unknown command. Type 'help' for a list of commands.")
 
 # ---- COMMANDS ----
-
 def cmd_quit(args):
     global running
     print("[SERVER] Shutting down...")
@@ -157,7 +196,6 @@ def cmd_help(args):
         print(f" - {name}: {desc}")
 
 # ---- REGISTER COMMANDS ----
-
 register_command("quit", cmd_quit, "Shut down the server")
 register_command("list", cmd_list, "List connected users")
 register_command("kick", cmd_kick, "Kick a user: kick <username>")
@@ -174,7 +212,6 @@ def shutdown_server():
         except:
             pass
     server.close()
-    #sys.exit(0)
 
 # Start threads
 threading.Thread(target=receive, daemon=True).start()
